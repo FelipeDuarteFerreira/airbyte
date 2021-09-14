@@ -26,7 +26,7 @@ else
   elif [[ "$connector" == *"connectors"* ]]; then
     connector_name=$(echo $connector | cut -d / -f 2)
     selected_integration_test=$(echo "$all_integration_tests" | grep "^$connector_name$" || echo "")
-    integrationTestCommand="$(_to_gradle_path "airbyte-integrations/$connector" integrationTest)"
+    integrationTestCommand="$(_to_gradle_path "airbyte-integrations/$connector" unitTest)"
   else
     selected_integration_test=$(echo "$all_integration_tests" | grep "^$connector$" || echo "")
     integrationTestCommand=":airbyte-integrations:connectors:$connector:integrationTest"
@@ -46,10 +46,18 @@ run | tee build.out
 # return status of "run" command, not "tee"
 # https://tldp.org/LDP/abs/html/internalvariables.html#PIPESTATUSREF
 run_status=${PIPESTATUS[0]}
+
 test $run_status == "0" || {
+   # Build failed
+   link=$(cat build.out | grep -A1 "Publishing build scan..." | tail -n1 | tr -d "\n")
    # Save gradle scan link to github GRADLE_SCAN_LINK variable for next job.
    # https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-an-environment-variable
-   LINK=$(cat build.out | grep -A1 "Publishing build scan..." | tail -n1 | tr -d "\n")
-   echo "GRADLE_SCAN_LINK=$LINK" >> $GITHUB_ENV
+   echo "GRADLE_SCAN_LINK=$link" >> $GITHUB_ENV
+   exit $run_status
 }
-exit $run_status
+
+# Build successed
+coverage_report=`sed -n '/--- coverage: /,/TOTAL   /p' build.out | tr '\n' ',' |  sed   's/,/\<br\/\>/g'`
+#echo "COVERAGE_REPORT=\"$coverage_report\"" >> $GITHUB_ENV
+echo "COVERAGE_REPORT=\"$coverage_report\"" > report.sh
+
